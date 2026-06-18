@@ -3,3 +3,4 @@ pandas
 openpyxl
 statsmodels
 scikit-learn
+plotly
