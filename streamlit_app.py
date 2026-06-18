@@ -69,12 +69,13 @@ st.sidebar.markdown("## ⚙️ CONTROL TOWER")
 pagina = st.sidebar.radio(
     "Módulo",
     [
-        "📊 Dashboard Ejecutivo",
-        "📈 Ventas",
-        "📦 Inventario",
-        "🚚 Lead Times",
-        "⚠️ Vencimientos"
-    ]
+    "📊 Dashboard Ejecutivo",
+    "📈 Ventas",
+    "📦 Inventario",
+    "🚚 Lead Times",
+    "⚠️ Vencimientos"
+]
+    
 )
 
 st.markdown("# 🏥 SMART PHARMA INVENTORY CONTROL")
