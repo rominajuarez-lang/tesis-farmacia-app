@@ -111,64 +111,10 @@ elif pagina == "Vencimientos":
 
     st.title("⚠️ Riesgo de Vencimiento por Lote")
 
-    # Unir inventario con costos del maestro SKU
-    venc = inventario.merge(
-        maestro[["SKU", "Costo_Unitario"]],
-        on="SKU",
-        how="left"
-    )
-
-    # Convertir fecha de vencimiento
-    venc["Fecha_Vencimiento"] = pd.to_datetime(venc["Fecha_Vencimiento"])
-
-    # Calcular meses restantes
-    hoy = pd.Timestamp.today()
-    venc["Meses_Restantes"] = (
-        (venc["Fecha_Vencimiento"] - hoy).dt.days / 30
-    ).round(1)
-
-    # Calcular riesgo
-    def clasificar_riesgo(meses):
-        if meses <= 3:
-            return "🔴 Alto"
-        elif meses <= 6:
-            return "🟡 Medio"
-        else:
-            return "🟢 Bajo"
-
-    venc["Riesgo"] = venc["Meses_Restantes"].apply(clasificar_riesgo)
-
-    # Riesgo económico
-    venc["Riesgo_Economico"] = (
-        venc["Stock_Lote"] * venc["Costo_Unitario"]
-    ).round(2)
-
-    st.subheader("Tabla de lotes con riesgo")
-
-    st.dataframe(
-        venc[
-            [
-                "SKU",
-                "Lote",
-                "Stock_Lote",
-                "Fecha_Vencimiento",
-                "Meses_Restantes",
-                "Riesgo",
-                "Riesgo_Economico"
-            ]
-        ],
-        use_container_width=True
-    )
-
-    st.subheader("Resumen por nivel de riesgo")
-
-    resumen = venc.groupby("Riesgo")["Riesgo_Economico"].sum().reset_index()
-
-    st.bar_chart(
-        resumen,
-        x="Riesgo",
-        y="Riesgo_Economico"
-    )
+   st.write("✅ Entró al módulo de vencimientos")
+st.write("Columnas de inventario:", inventario.columns.tolist())
+st.write("Columnas de maestro:", maestro.columns.tolist())
+st.dataframe(inventario.head(), use_container_width=True)
 # ==================================
 # INVENTARIO
 # ==================================
