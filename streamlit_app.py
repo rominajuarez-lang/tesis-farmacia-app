@@ -33,11 +33,37 @@ if pagina == "Dashboard":
 
     st.divider()
 
-    st.subheader("Estado General")
+    st.subheader("Productos Críticos")
 
-    st.info(
-        "El sistema monitorea demanda, inventario, "
-        "vencimientos y recomendaciones de compra."
+    datos = {
+        "SKU": ["MET001", "AMO001", "ENO001", "CEF001"],
+        "Producto": [
+            "Metformina",
+            "Amoxicilina",
+            "Enoxaparina",
+            "Ceftriaxona"
+        ],
+        "Riesgo": [
+            "🔴 Alto",
+            "🟡 Medio",
+            "🟢 Bajo",
+            "🔴 Alto"
+        ]
+    }
+
+    st.table(datos)
+
+    st.subheader("Distribución de Riesgo")
+
+    chart_data = {
+        "Categoría": ["Alto", "Medio", "Bajo"],
+        "Cantidad": [40, 25, 15]
+    }
+
+    st.bar_chart(
+        data=chart_data,
+        x="Categoría",
+        y="Cantidad"
     )
 
 # FORECAST
