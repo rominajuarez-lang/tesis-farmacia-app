@@ -65,7 +65,7 @@ if pagina == "Dashboard":
 
     total_lotes = inventario["Lote"].nunique()
 
-    stock_total = inventario["Stock"].sum()
+    stock_total = inventario["Stock_Lote"].sum()
 
     leadtime_promedio = round(
         leadtimes["LeadTime_Dias"].mean(),
