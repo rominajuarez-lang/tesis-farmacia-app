@@ -68,13 +68,14 @@ inventario["Fecha_Vencimiento"] = pd.to_datetime(inventario["Fecha_Vencimiento"]
 st.sidebar.markdown("## ⚙️ CONTROL TOWER")
 pagina = st.sidebar.radio(
     "Módulo",
-    [
-        "📊 Dashboard Ejecutivo",
-        "📈 Ventas",
-        "📦 Inventario",
-        "🚚 Lead Times",
-        "⚠️ Vencimientos"
-    ]
+   [
+    "📊 Dashboard Ejecutivo",
+    "📈 Ventas",
+    "📦 Inventario",
+    "🚚 Lead Times",
+    "⚠️ Vencimientos",
+    "🧠 Forecast 2025"
+]
 )
 
 st.markdown("# 🏥 SMART PHARMA INVENTORY CONTROL")
@@ -299,3 +300,301 @@ elif pagina == "⚠️ Vencimientos":
         height=420
     )
     st.markdown('</div>', unsafe_allow_html=True)
+
+elif pagina == "🧠 Forecast 2025":
+
+    import numpy as np
+    from sklearn.linear_model import LinearRegression
+    from sklearn.metrics import mean_absolute_error, mean_squared_error
+    from statsmodels.tsa.holtwinters import SimpleExpSmoothing, Holt, ExponentialSmoothing
+    from statsmodels.tsa.arima.model import ARIMA
+
+    forecast_comercial = pd.read_excel(
+        archivo_excel,
+        sheet_name="Forecast_Comercial"
+    )
+
+    forecast_comercial["Mes"] = pd.to_datetime(
+        forecast_comercial["Mes"],
+        errors="coerce"
+    )
+
+    st.subheader("🧠 Evaluación de modelos de pronóstico - Validación 2025")
+
+    st.info(
+        "Los modelos se entrenan con ventas reales 2024 y se validan contra ventas reales 2025. "
+        "Luego se compara el mejor modelo propuesto contra el Forecast Comercial 2025."
+    )
+
+    sku = st.selectbox(
+        "Seleccionar SKU",
+        sorted(ventas["SKU"].unique())
+    )
+
+    df_sku = ventas[ventas["SKU"] == sku].copy()
+    df_sku = df_sku.sort_values("Fecha")
+    df_sku = df_sku.groupby("Fecha", as_index=False)["Ventas"].sum()
+
+    train = df_sku[df_sku["Fecha"].dt.year == 2024].copy()
+    test = df_sku[df_sku["Fecha"].dt.year == 2025].copy()
+
+    if len(train) == 0 or len(test) == 0:
+        st.warning(
+            "Este SKU necesita ventas reales de 2024 para entrenar y ventas reales de 2025 para validar."
+        )
+        st.dataframe(df_sku, use_container_width=True)
+
+    else:
+        y_train = train["Ventas"].astype(float).reset_index(drop=True)
+        y_test = test["Ventas"].astype(float).reset_index(drop=True)
+        fechas_test = test["Fecha"].reset_index(drop=True)
+        n = len(y_test)
+
+        modelos = {}
+
+        fc_sku = forecast_comercial[
+            (forecast_comercial["SKU"] == sku) &
+            (forecast_comercial["Mes"].dt.year == 2025)
+        ].sort_values("Mes")
+
+        if len(fc_sku) >= n:
+            modelos["Forecast comercial"] = fc_sku["Forecast_Comercial"].values[:n]
+
+        modelos["Promedio móvil"] = np.repeat(y_train.tail(3).mean(), n)
+
+        try:
+            x_train = np.arange(len(y_train)).reshape(-1, 1)
+            x_test = np.arange(len(y_train), len(y_train) + n).reshape(-1, 1)
+            reg = LinearRegression()
+            reg.fit(x_train, y_train)
+            modelos["Regresión lineal"] = reg.predict(x_test)
+        except Exception:
+            pass
+
+        try:
+            ses = SimpleExpSmoothing(y_train).fit()
+            modelos["Suavizamiento exponencial simple"] = ses.forecast(n).values
+        except Exception:
+            pass
+
+        try:
+            holt = Holt(y_train).fit()
+            modelos["Holt"] = holt.forecast(n).values
+        except Exception:
+            pass
+
+        try:
+            if len(y_train) >= 12:
+                hw = ExponentialSmoothing(
+                    y_train,
+                    trend="add",
+                    seasonal="add",
+                    seasonal_periods=12
+                ).fit()
+                modelos["Holt-Winters"] = hw.forecast(n).values
+        except Exception:
+            pass
+
+        try:
+            arima = ARIMA(y_train, order=(1, 1, 1)).fit()
+            modelos["ARIMA"] = arima.forecast(n).values
+        except Exception:
+            pass
+
+        def calcular_mape(real, pred):
+            real = np.array(real, dtype=float)
+            pred = np.array(pred, dtype=float)
+            return np.mean(
+                np.abs((real - pred) / np.where(real == 0, 1, real))
+            ) * 100
+
+        resultados = []
+
+        costo_unitario = maestro.loc[
+            maestro["SKU"] == sku,
+            "Costo_Unitario"
+        ].iloc[0]
+
+        costo_unitario = pd.to_numeric(
+            costo_unitario,
+            errors="coerce"
+        )
+
+        if pd.isna(costo_unitario):
+            costo_unitario = 1
+
+        for nombre, pred in modelos.items():
+
+            pred = np.array(pred, dtype=float)
+            pred = np.maximum(pred, 0)
+
+            mae = mean_absolute_error(y_test, pred)
+            rmse = np.sqrt(mean_squared_error(y_test, pred))
+            mape = calcular_mape(y_test, pred)
+            bias = np.mean(pred - y_test)
+
+            sobrestock = np.maximum(pred - y_test, 0)
+            perdida = np.sum(sobrestock * costo_unitario)
+
+            resultados.append({
+                "Modelo": nombre,
+                "MAE": round(mae, 2),
+                "RMSE": round(rmse, 2),
+                "MAPE (%)": round(mape, 2),
+                "Bias": round(bias, 2),
+                "Sobrestock estimado": round(sobrestock.sum(), 0),
+                "Pérdida estimada S/": round(perdida, 2)
+            })
+
+        tabla = pd.DataFrame(resultados).sort_values("MAPE (%)")
+
+        mejor_modelo = tabla.iloc[0]["Modelo"]
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown(f"""
+            <div class="card">
+                <div class="kpi-title">MEJOR MODELO</div>
+                <div class="kpi-value">{mejor_modelo}</div>
+                <div class="kpi-sub">Según menor MAPE</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            mejor_mape = tabla.iloc[0]["MAPE (%)"]
+            st.markdown(f"""
+            <div class="card">
+                <div class="kpi-title">MAPE MODELO PROPUESTO</div>
+                <div class="kpi-value">{mejor_mape}%</div>
+                <div class="kpi-sub">Error porcentual medio</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            perdida_mejor = tabla.iloc[0]["Pérdida estimada S/"]
+            st.markdown(f"""
+            <div class="card">
+                <div class="kpi-title">PÉRDIDA PROPUESTA</div>
+                <div class="kpi-value">S/ {perdida_mejor:,.0f}</div>
+                <div class="kpi-sub">Sobrestock valorizado</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.subheader("📊 Comparación individual de modelos")
+
+        for nombre, pred in modelos.items():
+            pred = np.maximum(np.array(pred, dtype=float), 0)
+
+            graf = pd.DataFrame({
+                "Fecha": fechas_test,
+                "Ventas reales 2025": y_test,
+                nombre: pred
+            })
+
+            fig = px.line(
+                graf,
+                x="Fecha",
+                y=["Ventas reales 2025", nombre],
+                title=f"{nombre} vs ventas reales 2025",
+                markers=True
+            )
+
+            st.plotly_chart(
+                dark_fig(fig),
+                use_container_width=True
+            )
+
+        st.subheader("📋 Tabla comparativa de modelos")
+        st.dataframe(
+            tabla,
+            use_container_width=True,
+            height=320
+        )
+
+        if "Forecast comercial" in modelos:
+
+            perdida_comercial = tabla.loc[
+                tabla["Modelo"] == "Forecast comercial",
+                "Pérdida estimada S/"
+            ].iloc[0]
+
+            perdida_mejor = tabla.loc[
+                tabla["Modelo"] == mejor_modelo,
+                "Pérdida estimada S/"
+            ].iloc[0]
+
+            diferencia = perdida_comercial - perdida_mejor
+
+            reduccion = (
+                diferencia / perdida_comercial * 100
+                if perdida_comercial > 0
+                else 0
+            )
+
+            st.subheader("💰 Impacto económico estimado")
+
+            c1, c2, c3 = st.columns(3)
+
+            with c1:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="kpi-title">PÉRDIDA FORECAST COMERCIAL</div>
+                    <div class="kpi-value">S/ {perdida_comercial:,.0f}</div>
+                    <div class="kpi-sub">Escenario actual</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with c2:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="kpi-title">PÉRDIDA MODELO PROPUESTO</div>
+                    <div class="kpi-value">S/ {perdida_mejor:,.0f}</div>
+                    <div class="kpi-sub">Escenario propuesto</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with c3:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="kpi-title">REDUCCIÓN ESTIMADA</div>
+                    <div class="kpi-value">{reduccion:.1f}%</div>
+                    <div class="kpi-sub">Ahorro potencial</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            comparacion = pd.DataFrame({
+                "Fecha": fechas_test,
+                "Ventas reales 2025": y_test,
+                "Forecast comercial": np.maximum(modelos["Forecast comercial"], 0),
+                f"Mejor modelo: {mejor_modelo}": np.maximum(modelos[mejor_modelo], 0)
+            })
+
+            fig = px.line(
+                comparacion,
+                x="Fecha",
+                y=[
+                    "Ventas reales 2025",
+                    "Forecast comercial",
+                    f"Mejor modelo: {mejor_modelo}"
+                ],
+                title="Comparación final: ventas reales vs forecast comercial vs modelo propuesto",
+                markers=True
+            )
+
+            st.plotly_chart(
+                dark_fig(fig),
+                use_container_width=True
+            )
+
+            st.dataframe(
+                comparacion,
+                use_container_width=True,
+                height=320
+            )
+
+            st.info(
+                f"Si la empresa hubiera usado el modelo propuesto ({mejor_modelo}) "
+                f"en lugar del Forecast Comercial durante 2025, la pérdida estimada por sobrestock "
+                f"se habría reducido aproximadamente en S/ {diferencia:,.2f}."
+            )
