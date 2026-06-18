@@ -111,21 +111,16 @@ elif pagina == "Vencimientos":
 
     st.title("⚠️ Riesgo de Vencimiento por Lote")
 
-   st.write("✅ Entró al módulo de vencimientos")
-st.write("Columnas de inventario:", inventario.columns.tolist())
-st.write("Columnas de maestro:", maestro.columns.tolist())
-st.dataframe(inventario.head(), use_container_width=True)
-# ==================================
-# INVENTARIO
-# ==================================
+    st.write("✅ Entró al módulo de vencimientos")
+    st.write("Columnas de inventario:", inventario.columns.tolist())
+    st.write("Columnas de maestro:", maestro.columns.tolist())
+    st.dataframe(inventario.head(), use_container_width=True)
 
-elif pagina == "Inventario":
-
-    st.title("📦 Inventario")
-
-    st.dataframe(
-        inventario,
-        use_container_width=True
+    # Unir inventario con costos del maestro SKU
+    venc = inventario.merge(
+        maestro[["SKU", "Costo_Unitario"]],
+        on="SKU",
+        how="left"
     )
 
 # ==================================
