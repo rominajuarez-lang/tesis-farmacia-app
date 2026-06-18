@@ -1,111 +1,55 @@
 import streamlit as st
 import pandas as pd
 
-# ==================================
-# CONFIGURACIÓN
-# ==================================
-
 st.set_page_config(
     page_title="Sistema Inteligente de Inventarios Farmacéuticos",
     page_icon="🏥",
     layout="wide"
 )
 
-# ==================================
-# LEER EXCEL
-# ==================================
-
 archivo_excel = "Base_Ficticia_Farmaceutica_Tesis.xlsx"
 
-maestro = pd.read_excel(
-    archivo_excel,
-    sheet_name="Maestro_SKU"
-)
-
-ventas = pd.read_excel(
-    archivo_excel,
-    sheet_name="Ventas_Historicas"
-)
-
-inventario = pd.read_excel(
-    archivo_excel,
-    sheet_name="Inventario_Lotes"
-)
-
-leadtimes = pd.read_excel(
-    archivo_excel,
-    sheet_name="LeadTimes"
-)
-
-# ==================================
-# MENU
-# ==================================
+maestro = pd.read_excel(archivo_excel, sheet_name="Maestro_SKU")
+ventas = pd.read_excel(archivo_excel, sheet_name="Ventas_Historicas")
+inventario = pd.read_excel(archivo_excel, sheet_name="Inventario_Lotes")
+leadtimes = pd.read_excel(archivo_excel, sheet_name="LeadTimes")
 
 st.sidebar.title("🏥 Menú")
 
 pagina = st.sidebar.radio(
     "Seleccionar módulo",
-    [
-        "Dashboard",
-        "Ventas",
-        "Inventario",
-        "Lead Times"
-    ]
+    ["Dashboard", "Ventas", "Inventario", "Lead Times", "Vencimientos"]
 )
-
-# ==================================
-# DASHBOARD
-# ==================================
 
 if pagina == "Dashboard":
 
     st.title("🏥 Sistema Inteligente de Inventarios Farmacéuticos")
 
-    total_skus = maestro["SKU"].nunique()
-
-    total_lotes = inventario["Lote"].nunique()
-
-    stock_total = inventario["Stock_Lote"].sum()
-
-    leadtime_promedio = round(
-        leadtimes["LeadTime_Dias"].mean(),
-        1
-    )
-
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric(
-        "SKUs",
-        total_skus
-    )
-
-    col2.metric(
-        "Lotes",
-        total_lotes
-    )
-
-    col3.metric(
-        "Stock Total",
-        f"{stock_total:,.0f}"
-    )
-
-    col4.metric(
-        "Lead Time Prom.",
-        leadtime_promedio
-    )
+    col1.metric("SKUs", maestro["SKU"].nunique())
+    col2.metric("Lotes", inventario["Lote"].nunique())
+    col3.metric("Stock Total", f"{inventario['Stock_Lote'].sum():,.0f}")
+    col4.metric("Lead Time Prom.", round(leadtimes["LeadTime_Dias"].mean(), 1))
 
     st.divider()
-
     st.subheader("Inventario por lote")
+    st.dataframe(inventario.head(20), use_container_width=True)
 
-    st.dataframe(
-        inventario.head(20),
-        use_container_width=True
-    )
+elif pagina == "Ventas":
 
-# ==================================
-# VENTAS
-# ==================================
+    st.title("📈 Ventas Históricas")
+    st.dataframe(ventas.head(100), use_container_width=True)
+
+elif pagina == "Inventario":
+
+    st.title("📦 Inventario por Lote")
+    st.dataframe(inventario, use_container_width=True)
+
+elif pagina == "Lead Times":
+
+    st.title("🚚 Lead Times")
+    st.dataframe(leadtimes, use_container_width=True)
 
 elif pagina == "Vencimientos":
 
@@ -113,7 +57,10 @@ elif pagina == "Vencimientos":
 
     venc = inventario.copy()
 
-    venc["Fecha_Vencimiento"] = pd.to_datetime(venc["Fecha_Vencimiento"])
+    venc["Fecha_Vencimiento"] = pd.to_datetime(
+        venc["Fecha_Vencimiento"],
+        errors="coerce"
+    )
 
     hoy = pd.Timestamp.today()
 
@@ -122,7 +69,9 @@ elif pagina == "Vencimientos":
     ).round(1)
 
     def clasificar_riesgo(meses):
-        if meses <= 3:
+        if pd.isna(meses):
+            return "Sin fecha"
+        elif meses <= 3:
             return "🔴 Alto"
         elif meses <= 6:
             return "🟡 Medio"
@@ -131,41 +80,28 @@ elif pagina == "Vencimientos":
 
     venc["Riesgo"] = venc["Meses_Restantes"].apply(clasificar_riesgo)
 
+    st.subheader("Tabla de vencimientos calculada")
+
     st.dataframe(
-        venc[
-            [
-                "SKU",
-                "Lote",
-                "Stock_Lote",
-                "Fecha_Vencimiento",
-                "Meses_Restantes",
-                "Almacen",
-                "Estado",
-                "Riesgo"
-            ]
-        ],
+        venc[[
+            "SKU",
+            "Lote",
+            "Stock_Lote",
+            "Fecha_Vencimiento",
+            "Meses_Restantes",
+            "Almacen",
+            "Estado",
+            "Riesgo"
+        ]],
         use_container_width=True
     )
 
-    resumen = venc.groupby("Riesgo")["Stock_Lote"].sum().reset_index()
-
     st.subheader("Stock por nivel de riesgo")
+
+    resumen = venc.groupby("Riesgo", as_index=False)["Stock_Lote"].sum()
 
     st.bar_chart(
         resumen,
         x="Riesgo",
         y="Stock_Lote"
-    )
-
-# ==================================
-# LEAD TIMES
-# ==================================
-
-elif pagina == "Lead Times":
-
-    st.title("🚚 Lead Times")
-
-    st.dataframe(
-        leadtimes,
-        use_container_width=True
     )
